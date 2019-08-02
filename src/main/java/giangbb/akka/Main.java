@@ -1,6 +1,7 @@
 package giangbb.akka;
 
 import giangbb.akka.Utils.Graphs;
+import giangbb.akka.Utils.Modularity;
 import giangbb.akka.Utils.PartialGraphs;
 import giangbb.akka.config.SpringConfig;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
@@ -33,7 +34,9 @@ public class Main {
 //        PartialGraphs.constructingSourceShape();
 //        PartialGraphs.constructingFlowShape();
 //        PartialGraphs.combineSource();
-        PartialGraphs.combineSink();
+//        PartialGraphs.combineSink();
+
+        Modularity.createNesting();
     }
 
 
