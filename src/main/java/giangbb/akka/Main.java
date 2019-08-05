@@ -1,8 +1,7 @@
 package giangbb.akka;
 
-import giangbb.akka.Utils.Graphs;
-import giangbb.akka.Utils.Modularity;
-import giangbb.akka.Utils.PartialGraphs;
+import giangbb.akka.Utils.Hub;
+import giangbb.akka.Utils.KillSwitch;
 import giangbb.akka.config.SpringConfig;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 import org.springframework.context.support.AbstractApplicationContext;
@@ -36,7 +35,19 @@ public class Main {
 //        PartialGraphs.combineSource();
 //        PartialGraphs.combineSink();
 
-        Modularity.createNesting();
+//        Modularity.createNesting();
+//        Modularity.composingComplexSystem();
+//        Modularity.partialGrapth();
+//        Modularity.combinePartialGrapth();
+
+//        KillSwitch.uniqueKillSwitchShutdown();
+//        KillSwitch.uniqueKillSwitchAbbort();
+//        KillSwitch.sharedKillSwitchShutdown();
+//        KillSwitch.sharedKillSwitchAbbort();
+
+//        Hub.mergeHubTest();
+//        Hub.broadCastHubTest();
+        Hub.simplePublishSubscribeService();
     }
 
 
