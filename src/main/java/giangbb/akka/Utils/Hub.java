@@ -2,6 +2,7 @@ package giangbb.akka.Utils;
 
 import akka.Done;
 import akka.NotUsed;
+import akka.actor.ActorRef;
 import akka.actor.ActorSystem;
 import akka.actor.Cancellable;
 import akka.japi.Pair;
@@ -110,7 +111,7 @@ public class Hub {
         // If this dropping Sink is not attached, then the broadcast hub will not drop any
         // elements itself when there are no subscribers, backpressuring the producer instead.
         source.runWith(Sink.ignore(),materializer);
-        source.runWith(Sink.foreach(s -> System.out.println("origin:"+s)),materializer);
+        source.runWith(Sink.foreach(s -> System.out.println("origin sink:"+s)),materializer);
 
         //We now wrap the Sink and Source in a Flow using Flow.fromSinkAndSource.
         // This bundles up the two sides of the channel into one and forces users of it to always define a publisher and subscriber side
@@ -132,7 +133,7 @@ public class Hub {
                 .to(Sink.foreach(s -> System.out.println("Sink0:"+s))).run(materializer);
 
 
-        //Example 1: add new source sink
+        //region Example 1: add new sources sinks
 //        List<UniqueKillSwitch> uniqueKillSwitchList = new ArrayList<UniqueKillSwitch>();
 //        boolean loop = true;
 //        int i=0;
@@ -164,10 +165,12 @@ public class Hub {
 //        for (UniqueKillSwitch uniqueKillSwitch:uniqueKillSwitchList){
 //            uniqueKillSwitch.shutdown();
 //        }
+        //endregion
 
-        //Example 2: add new source
+        //region Example 2: add new sources
         int i=0;
         boolean loop = true;
+        List<UniqueKillSwitch> uniqueKillSwitchList = new ArrayList<UniqueKillSwitch>();
         while (loop){
             try{
                 System.out.println("Input a command:");
@@ -181,24 +184,128 @@ public class Hub {
 
                 if (cmd.equals("add")){
                     i++;
-                    Source.repeat("Hello World "+i+"!")
+                    UniqueKillSwitch killSwitch2 = Source.repeat("Hello World "+i+"!")
                             .delay(Duration.ofSeconds(5), DelayOverflowStrategy.backpressure())
                             .throttle(1,Duration.ofSeconds(1))
+                            .viaMat(KillSwitches.single(),Keep.right())
                             .to(sink).run(materializer);
+                    uniqueKillSwitchList.add(killSwitch2);
                 }
             }catch (Exception e){
                 e.printStackTrace();
             }
         }
         System.out.println("SHUTDOWN THE KILLSWITCH!!!!!!!!");
-        killSwitch.shutdown();
+        for (UniqueKillSwitch uniqueKillSwitch:uniqueKillSwitchList){
+            uniqueKillSwitch.shutdown();
+        }
+        //endregion
+
+    }
+
+    public static void statelessPartitionHubTest(){
+        ActorSystem actorSystem = ActorSystem.create("GiangbbSystem");
+        Materializer materializer = ActorMaterializer.create(actorSystem);
+
+        //A PartitionHub can be used to route elements from a common producer to a dynamic set of consumers.
+        // The selection of consumer is done with a function. Each element can be routed to only one consumer.
+        //The rate of the producer will be automatically adapted to the slowest consumer.
+        // In this case, the hub is a Sink to which the single producer must be attached first.
+        // Consumers can only be attached once the Sink has been materialized
+
+        // A simple producer that publishes a new "message-n" every second
+        Source<String,Cancellable> producer = Source.tick(Duration.ofSeconds(1),Duration.ofSeconds(1),"Message")
+                .zipWith(Source.range(0,100), (a,b) -> a+"-"+b);
+
+        // Attach a PartitionHub Sink to the producer. This will materialize to a
+        // corresponding Source.
+        // (We need to use toMat and Keep.right since by default the materialized
+        // value to the left is used)
+        RunnableGraph<Source<String,NotUsed>> runnableGraph = producer
+                .toMat(
+                        //The partitioner function takes two parameters; the first is the number of active consumers and the second is the stream element.
+                        // The function should return the index of the selected consumer for the given element, i.e. int greater than or equal to 0 and less than number of consumers.
+                        PartitionHub.of(String.class,
+                                (size,element) -> Math.abs(element.hashCode()%size),
+                                2,      //It is possible to define how many initial consumers that are required before it starts emitting any messages to the attached consumers. While not enough consumers have been attached messages are buffered and when the buffer is full the upstream producer is backpressured. No messages are dropped.
+                                256), Keep.right()
+                );
+
+        // By running/materializing the producer, we get back a Source, which
+        // gives us access to the elements published by the producer.
+        Source<String,NotUsed> fromProducer = runnableGraph.run(materializer);
 
 
+        //The resulting Source can be materialized any number of times, each materialization effectively attaching a new consumer.
+        // If there are no consumers attached to this hub then it will not drop any elements but instead backpressure the upstream producer until consumers arrive.
+        // This behavior can be tweaked by using an operator, for example .buffer with a drop strategy, or attaching a consumer that drops all messages.
+        // If there are no other consumers, this will ensure that the producer is kept drained (dropping all elements)
+        // and once a new consumer arrives and messages are routed to the new consumer it will adaptively slow down, ensuring no more messages are dropped.
+        fromProducer.runForeach(msg -> System.out.println("consumer1: " + msg), materializer);
+        boolean loop = true;
+        while (loop){
+            try{
+                System.out.println("Input a command:");
+                BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+                String cmd = in.readLine();
+
+                if (cmd.equals("stop")){
+                    loop = false;
+                    continue;
+                }
+            }catch (Exception e){
+                e.printStackTrace();
+            }
+        }
+        System.out.println("ATTACH NEW SINK!!!!");
+        fromProducer.runForeach(msg -> System.out.println("consumer2: " + msg), materializer);
 
     }
 
 
+    public static void statefulPartitionHubTest(){
+        ActorSystem actorSystem = ActorSystem.create("GiangbbSystem");
+        Materializer materializer = ActorMaterializer.create(actorSystem);
+        //prefer routing to the fastest consumers.
+        // The ConsumerInfo has an accessor queueSize that is approximate number of buffered elements for a consumer.
+        // Larger value than other consumers could be an indication of that the consumer is slow.
+        // Note that this is a moving target since the elements are consumed concurrently.
+        // Here is an example of a hub that routes to the consumer with least buffered elements:
+
+        Source<Integer, NotUsed> producer = Source.range(0, 100);
+
+        // ConsumerInfo.queueSize is the approximate number of buffered elements for a consumer.
+        // Note that this is a moving target since the elements are consumed concurrently.
+        RunnableGraph<Source<Integer,NotUsed>> runnableGraph = producer
+                .toMat(
+                        PartitionHub.ofStateful(Integer.class,
+                                () ->
+                                        (info,element) -> {
+                                            final List<Object> ids = info.getConsumerIds();
+                                            int minValue = info.queueSize(0);
+                                            long fastest = info.consumerIdByIdx(0);
+                                            for (int i = 1; i < ids.size(); i++) {
+                                                int value = info.queueSize(i);
+                                                if (value < minValue) {
+                                                    minValue = value;
+                                                    fastest = info.consumerIdByIdx(i);
+                                                }
+                                            }
+                                            return fastest;
+                                        },
+                                2,      //It is possible to define how many initial consumers that are required before it starts emitting any messages to the attached consumers. While not enough consumers have been attached messages are buffered and when the buffer is full the upstream producer is backpressured. No messages are dropped.
+                                8),
+                        Keep.right()
+                );
+
+        Source<Integer,NotUsed> fromProducer = runnableGraph.run(materializer);
 
 
+        fromProducer.runForeach(msg -> System.out.println("consumer1: " + msg), materializer);
+        fromProducer
+                .throttle(10, Duration.ofMillis(100))
+                .runForeach(msg -> System.out.println("consumer2: " + msg), materializer);
+
+    }
 
 }
