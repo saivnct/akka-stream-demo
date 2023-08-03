@@ -57,7 +57,7 @@ public class Main {
 //        PartialGraphs.constructingSourceShape();
 //        PartialGraphs.constructingFlowShape();
 //        PartialGraphs.combineSource();
-        PartialGraphs.combineSink();
+//        PartialGraphs.combineSink();
 
 //        Modularity.createNesting();
 //        Modularity.composingComplexSystem();
@@ -74,6 +74,8 @@ public class Main {
 //        Hub.simplePublishSubscribeService();
 //        Hub.statelessPartitionHubTest();
 //        Hub.statefulPartitionHubTest();
+
+
     }
 
 

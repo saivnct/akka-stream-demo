@@ -14,7 +14,6 @@ public class Modularity {
 
     public static void createNesting(){
         ActorSystem actorSystem = ActorSystem.create("giangbbSystem");
-        Materializer materializer = ActorMaterializer.create(actorSystem);
 
         Source<Integer, NotUsed> nestedSource = Source.single(0) // An atomic source
                 .map(i -> i+1) // an atomic processing stage
@@ -31,7 +30,9 @@ public class Modularity {
         // Create a RunnableGraph
         final RunnableGraph<CompletionStage<Integer>> runnableGraph = nestedSource.toMat(nestedSink,Keep.right());
 
-        CompletionStage<Integer> completionStage = runnableGraph.run(materializer);
+        CompletionStage<Integer> completionStage = runnableGraph.run(actorSystem);
+
+        completionStage.thenRun(() -> actorSystem.terminate());
 
         try {
             System.out.println("result:"+completionStage.toCompletableFuture().get());
@@ -43,7 +44,6 @@ public class Modularity {
 
     public static void composingComplexSystem(){
         ActorSystem actorSystem = ActorSystem.create("GiangbbSystem");
-        Materializer materializer = ActorMaterializer.create(actorSystem);
 
         //C1 - Using the implicit port numbering feature (to make the graph more readable and similar to the diagram)
         // and we imported Source s, Sink s and Flow s explicitly
@@ -69,7 +69,7 @@ public class Modularity {
                     return ClosedShape.getInstance();
                 })
         );
-        graph1.run(materializer);
+        graph1.run(actorSystem);
 
         //C2 - It is possible to refer to the ports explicitly, and it is not necessary to import our linear operators via add()
         RunnableGraph<NotUsed> graph2 = RunnableGraph.fromGraph(
@@ -98,7 +98,7 @@ public class Modularity {
                    return ClosedShape.getInstance();
                 })
         );
-        graph2.run(materializer);
+        graph2.run(actorSystem);
 
     }
 
@@ -109,7 +109,6 @@ public class Modularity {
         // If we remove the sources and sinks from the previous example, what remains is a partial graph
 
         ActorSystem actorSystem = ActorSystem.create("GiangbbSystem");
-        Materializer materializer = ActorMaterializer.create(actorSystem);
 
         Graph<FlowShape<Integer,Integer>,NotUsed> partial = GraphDSL.create( builder -> {
             final UniformFanOutShape<Integer,Integer> B = builder.add(Broadcast.create(2));
@@ -146,12 +145,11 @@ public class Modularity {
         // but it is a good practice to give names to modules to help debugging
 
         //Since our partial graph has the right shape, it can be already used in the simpler, linear DSL
-        Source.single(0).via(partial).to(Sink.foreach( i -> System.out.println("i: "+i))).run(materializer);
+        Source.single(0).via(partial).to(Sink.foreach( i -> System.out.println("i: "+i))).run(actorSystem);
     }
 
     public static void combinePartialGrapth(){
         ActorSystem actorSystem = ActorSystem.create("GiangbbSystem");
-        Materializer materializer = ActorMaterializer.create(actorSystem);
 
         Graph<FlowShape<Integer,Integer>,NotUsed> partial = GraphDSL.create( builder -> {
             final UniformFanOutShape<Integer,Integer> B = builder.add(Broadcast.create(2));
@@ -212,7 +210,7 @@ public class Modularity {
 
 
         RunnableGraph<NotUsed> graph = source.via(flow).to(sink);
-        graph.run(materializer);
+        graph.run(actorSystem);
     }
 
 

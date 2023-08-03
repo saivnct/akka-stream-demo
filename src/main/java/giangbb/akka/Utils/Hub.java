@@ -28,7 +28,6 @@ public class Hub {
         // This is ensured by the fact that we only get the corresponding Sink as a materialized value
 
         ActorSystem actorSystem = ActorSystem.create("GiangbbSystem");
-        Materializer materializer = ActorMaterializer.create(actorSystem);
 
         Sink<String, CompletionStage<Done>> consumer = Sink.foreach(s -> System.out.println("consumer receive:"+s));
         // Attach a MergeHub Source to the consumer.
@@ -39,7 +38,7 @@ public class Hub {
         // now have access to feed elements into it. This Sink can be materialized
         // any number of times, and every element that enters the Sink will
         // be consumed by our consumer.
-        Sink<String, NotUsed> toConsumer = runnableGraph.run(materializer);
+        Sink<String, NotUsed> toConsumer = runnableGraph.run(actorSystem);
 
         boolean loop = true;
         while (loop){
@@ -53,7 +52,7 @@ public class Hub {
                     continue;
                 }
 
-                Source.single(cmd).runWith(toConsumer,materializer);
+                Source.single(cmd).runWith(toConsumer,actorSystem);
             }catch (Exception e){
                 e.printStackTrace();
             }
@@ -67,27 +66,50 @@ public class Hub {
         // Consumers can only be attached once the Sink has been materialized (i.e. the producer has been started)
 
         ActorSystem actorSystem = ActorSystem.create("GiangbbSystem");
-        Materializer materializer = ActorMaterializer.create(actorSystem);
 
-        Source<String, Cancellable> producer = Source.tick(Duration.ofSeconds(1),Duration.ofSeconds(1),"New Message" );
+        Source<String, Cancellable> producer = Source.tick(Duration.ofSeconds(2),Duration.ofSeconds(2),"New Message" );
 
         // Attach a BroadcastHub Sink to the producer. This will materialize to a
         // corresponding Source.
         // (We need to use toMat and Keep.right since by default the materialized
         // value to the left is used)
-        RunnableGraph<Source<String,NotUsed>> runnableGraph = producer.toMat( BroadcastHub.of(String.class,256), Keep.right());
+//        RunnableGraph<Source<String,NotUsed>> runnableGraph = producer.toMat( BroadcastHub.of(String.class,256), Keep.right());
+
+
+        RunnableGraph<Pair<Cancellable, Source<String,NotUsed>>> runnableGraph = producer.toMat( BroadcastHub.of(String.class,256), Keep.both());
 
         // By running/materializing the producer, we get back a Source, which
         // gives us access to the elements published by the producer.
-        Source<String, NotUsed> fromProducer = runnableGraph.run(materializer);
+        Pair<Cancellable, Source<String,NotUsed>> fromProducer = runnableGraph.run(actorSystem);
+        Source<String,NotUsed> broadcastSource = fromProducer.second();
+        Cancellable cancellable = fromProducer.first();
 
-        fromProducer.runForeach(msg -> System.out.println("consumer1: " + msg), materializer);
-        fromProducer.runForeach(msg -> System.out.println("consumer2: " + msg), materializer);
+
+        broadcastSource.runForeach(msg -> System.out.println("consumer1: " + msg), actorSystem);
+        broadcastSource.runForeach(msg -> System.out.println("consumer2: " + msg), actorSystem);
         //The resulting Source can be materialized any number of times, each materialization effectively attaching a new subscriber.
         // If there are no subscribers attached to this hub then it will not drop any elements but instead backpressure the upstream producer until subscribers arrive.
         // This behavior can be tweaked by using the operators .buffer for example with a drop strategy, or attaching a subscriber that drops all messages.
         // If there are no other subscribers, this will ensure that the producer is kept drained (dropping all elements)
         // and once a new subscriber arrives it will adaptively slow down, ensuring no more messages are dropped.
+
+        boolean loop = true;
+        while (loop){
+            try{
+                System.out.println("Input a command:");
+                BufferedReader in = new BufferedReader(new InputStreamReader(System.in));
+                String cmd = in.readLine();
+                if (cmd.equals("stop")){
+                    loop = false;
+                }
+            }catch (Exception e){
+                e.printStackTrace();
+            }
+        }
+        System.out.println("Do cancel!!!!!");
+        cancellable.cancel();
+        actorSystem.terminate();
+
     }
 
     public static void simplePublishSubscribeService(){
