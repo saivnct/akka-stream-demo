@@ -13,18 +13,57 @@
 
     <properties>
         <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
-        <junit.version>4.12</junit.version>
+
+        <version.assembly.plugin>3.4.2</version.assembly.plugin>
+        <version.compiler.plugin>3.11.0</version.compiler.plugin>
+
+        <!-- maven-compiler-plugin -->
+        <maven.compiler.release>11</maven.compiler.release>
+        <!-- maven-compiler-plugin -->
+        <maven.compiler.release>11</maven.compiler.release>
+
+
+        <junit.version>4.13.1</junit.version>
         <org.slf4j.version>1.7.12</org.slf4j.version>
-        <org.springframework.version>5.0.2.RELEASE</org.springframework.version>
+        <org.springframework.version>5.3.21</org.springframework.version>
         <org.springframework.data.version>2.0.2.RELEASE</org.springframework.data.version>
-        <com.typesafe.akka.version>2.5.23</com.typesafe.akka.version>
+
         <com.fasterxml.jackson.version>2.7.3</com.fasterxml.jackson.version>
         <log4j.version>2.8.2</log4j.version>
         <org.apache.httpcomponents.version>4.5.2</org.apache.httpcomponents.version>
         <commons.io.version>2.4</commons.io.version>
+
+        <com.typesafe.akka.version>2.8.3</com.typesafe.akka.version>
+        <scala.binary.version>2.13</scala.binary.version>
     </properties>
 
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>com.typesafe.akka</groupId>
+                <artifactId>akka-bom_${scala.binary.version}</artifactId>
+                <version>${com.typesafe.akka.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <repositories>
+        <repository>
+            <id>akka-repository</id>
+            <name>Akka library repository</name>
+            <url>https://repo.akka.io/maven</url>
+        </repository>
+    </repositories>
+
     <dependencies>
+        <dependency>
+            <groupId>com.typesafe.akka</groupId>
+            <artifactId>akka-stream_${scala.binary.version}</artifactId>
+        </dependency>
+
         <dependency>
             <groupId>junit</groupId>
             <artifactId>junit</artifactId>
@@ -66,16 +105,6 @@
             <version>${org.springframework.data.version}</version>
         </dependency>
         <dependency>
-            <groupId>com.typesafe.akka</groupId>
-            <artifactId>akka-actor_2.12</artifactId>
-            <version>${com.typesafe.akka.version}</version>
-        </dependency>
-        <dependency>
-            <groupId>com.typesafe.akka</groupId>
-            <artifactId>akka-stream_2.12</artifactId>
-            <version>${com.typesafe.akka.version}</version>
-        </dependency>
-        <dependency>
             <groupId>com.fasterxml.jackson.core</groupId>
             <artifactId>jackson-annotations</artifactId>
             <version>${com.fasterxml.jackson.version}</version>
@@ -97,17 +126,55 @@
             <artifactId>httpclient</artifactId>
             <version>${org.apache.httpcomponents.version}</version>
         </dependency>
+
+
+
+
+
     </dependencies>
 
     <build>
         <plugins>
+
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-assembly-plugin</artifactId>
+                <version>${version.assembly.plugin}</version>
+                <configuration>
+                    <archive>
+                        <index>true</index>
+                        <manifest>
+                            <addDefaultSpecificationEntries>
+                                true
+                            </addDefaultSpecificationEntries>
+                            <addDefaultImplementationEntries>
+                                true
+                            </addDefaultImplementationEntries>
+                        </manifest>
+                        <manifestEntries>
+                            <Implementation-URL>${project.url}</Implementation-URL>
+                            <Java-Version>${java.version}</Java-Version>
+                            <Java-Vendor>${java.vendor}</Java-Vendor>
+                            <Os-Name>${os.name}</Os-Name>
+                            <Os-Arch>${os.arch}</Os-Arch>
+                            <Os-Version>${os.version}</Os-Version>
+                            <Scm-Url>${project.scm.url}</Scm-Url>
+                            <Scm-Connection>${project.scm.connection}</Scm-Connection>
+                            <Scm-Revision>${buildNumber}</Scm-Revision>
+                            <Build-Timestamp>${build.datetime}</Build-Timestamp>
+                        </manifestEntries>
+                    </archive>
+                </configuration>
+            </plugin>
+
+
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-compiler-plugin</artifactId>
-                <version>3.5.1</version>
+                <version>${version.compiler.plugin}</version>
                 <configuration>
-                    <source>1.8</source>
-                    <target>1.8</target>
+                    <showDeprecation>true</showDeprecation>
+                    <showWarnings>true</showWarnings>
                 </configuration>
             </plugin>
 

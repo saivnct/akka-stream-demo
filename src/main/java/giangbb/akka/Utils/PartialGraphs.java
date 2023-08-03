@@ -23,17 +23,16 @@ public class PartialGraphs {
     ---------(source1)------------>|
                                    |
                                    v
-                                (maxOf2)--------------------->|
-                                  ^                           |
-                                 |                            v
-    ---------(source2)--------->|                         (maxOf2)------------>(out)
+                                (Zip maxOf2_1)----------------->|
+                                  ^                             |
+                                  |                             v
+    ---------(source2)----------->|                         (Zip maxOf2_2)------------>(out)
                                                               ^
-                                                             |
-    ---------(source1)--------------------------------------|
+                                                              |
+    ---------(source3)----------------------------------------|
      */
     public static void graphGetMaxFrom3Source(){
         ActorSystem actorSystem = ActorSystem.create("GianbbSystem");
-        Materializer materializer = ActorMaterializer.create(actorSystem);
 
         Graph<FanInShape2<Integer,Integer,Integer>, NotUsed> maxOf2 = ZipWith.create((Integer in1,Integer in2) -> Math.max(in1,in2));
 
@@ -44,7 +43,10 @@ public class PartialGraphs {
 
                     buider.from(maxOf2_1.out()).toInlet(maxOf2_2.in0());
                     // return the shape, which has three inputs and one output
-                    return new UniformFanInShape<Integer, Integer>(maxOf2_2.out(),new Inlet[]{maxOf2_1.in0(),maxOf2_1.in1(),maxOf2_2.in1()});
+                    return new UniformFanInShape<Integer, Integer>(
+                            maxOf2_2.out(),
+                            new Inlet[]{maxOf2_1.in0(),maxOf2_1.in1(),maxOf2_2.in1()}
+                    );
                 }
         );
 
@@ -73,7 +75,9 @@ public class PartialGraphs {
                 )
         );
 
-        CompletionStage<Integer> completionStage = graph.run(materializer);
+        CompletionStage<Integer> completionStage = graph.run(actorSystem);
+
+        completionStage.thenRun(() -> actorSystem.terminate());
         try{
             System.out.println("max value = "+completionStage.toCompletableFuture().get());
         }catch (Exception e){
@@ -93,9 +97,8 @@ public class PartialGraphs {
 
     public static void constructingSourceShape(){
         ActorSystem actorSystem = ActorSystem.create("GiangbbSystem");
-        Materializer materializer = ActorMaterializer.create(actorSystem);
 
-        Source<Integer,NotUsed> ints = Source.fromIterator(() -> new Ints());
+        Source<Integer,NotUsed> ints = Source.fromIterator(() -> new Ints(100));
 
         Source<Pair<Integer,Integer>,NotUsed> pairSource = Source.fromGraph(
                 GraphDSL.create(
@@ -104,6 +107,7 @@ public class PartialGraphs {
 
                             Outlet<Integer> s1 = builder.add(ints.filter(a -> a%2 == 0)).out();
                             Outlet<Integer> s2 = builder.add(ints.filter(a -> a%2 != 0)).out();
+
                             builder.from(s1).toInlet(myZip.in0());
                             builder.from(s2).toInlet(myZip.in1());
                             return SourceShape.of(myZip.out());
@@ -111,13 +115,17 @@ public class PartialGraphs {
                 )
         );
 
-        pairSource.runWith(Sink.foreach(pair -> System.out.println("num1:"+ pair.first()+" num2:"+pair.second())),materializer);
-
+        CompletionStage<Done> done = pairSource.runWith(Sink.foreach(pair -> System.out.println("even:"+ pair.first()+" odd:"+pair.second())),actorSystem);
+        done.thenRun(() -> actorSystem.terminate());
+        try{
+            done.toCompletableFuture().get();
+        }catch (Exception e){
+            e.printStackTrace();
+        }
     }
 
     public static void constructingFlowShape(){
         ActorSystem actorSystem = ActorSystem.create("GiangbbSystem");
-        Materializer materializer = ActorMaterializer.create(actorSystem);
         Flow<Integer,Pair<Integer,String>,NotUsed> myflow = Flow.fromGraph(
                 GraphDSL.create(
                         builder -> {
@@ -131,13 +139,18 @@ public class PartialGraphs {
                 )
         );
 
-        Source.fromIterator( ()->new Ints())
+        CompletionStage<Done> done = Source.fromIterator( ()->new Ints(100))
                 .via(myflow)
                 .runWith(
                         Sink.foreach(a->System.out.println("number:"+a.first()+" - string:"+a.second()))
-                ,materializer);
+                ,actorSystem);
 
-
+        done.thenRun(() -> actorSystem.terminate());
+        try{
+            done.toCompletableFuture().get();
+        }catch (Exception e){
+            e.printStackTrace();
+        }
     }
     //endregion
 
@@ -151,8 +164,8 @@ public class PartialGraphs {
         Materializer materializer = ActorMaterializer.create(actorSystem);
 
 
-        Source<Integer,NotUsed> source1 = Source.fromIterator(()->new Ints()).filter(a -> a%2 == 0);
-        Source<Integer,NotUsed> source2 = Source.fromIterator(()->new Ints()).filter(a -> a%2 != 0);
+        Source<Integer,NotUsed> source1 = Source.fromIterator(()->new Ints(100)).filter(a -> a%2 == 0);
+        Source<Integer,NotUsed> source2 = Source.fromIterator(()->new Ints(100)).filter(a -> a%2 != 0);
 
         Source<Integer,NotUsed> source = Source.combine(source1,source2,new ArrayList<>(),i -> Merge.<Integer>create(i));
 
@@ -162,16 +175,17 @@ public class PartialGraphs {
     public static void combineSink(){
         //In following example we combine two sinks into one (fan-out)
         ActorSystem actorSystem = ActorSystem.create("GiangbbSystem");
-        Materializer materializer = ActorMaterializer.create(actorSystem);
 
-        ActorRef testActor = actorSystem.actorOf(Props.create(TestActor.class, () -> new TestActor(materializer)));
+        ActorRef testActor = actorSystem.actorOf(Props.create(TestActor.class, () -> new TestActor()));
         Sink<Integer, NotUsed> sendRemotely = Sink.actorRef(testActor,"Finished");
 
         Sink<Integer,CompletionStage<Done>> showConsole = Sink.foreach(a -> System.out.println("number:"+a));
 
-        Sink<Integer,NotUsed> sinks = Sink.combine(sendRemotely,showConsole, new ArrayList<>(), i -> Broadcast.create(i));
+        Sink<Integer,NotUsed> sinks = Sink.combine(sendRemotely, showConsole, new ArrayList<>(), i -> Broadcast.create(i));
 
-        Source.fromIterator(() -> new Ints()).runWith(sinks,materializer);
+        Source.fromIterator(() -> new Ints(100)).runWith(sinks,actorSystem);
+
+        actorSystem.terminate();
     }
 
 

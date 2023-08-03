@@ -5,6 +5,8 @@ import akka.actor.ActorSystem;
 import akka.japi.Pair;
 import akka.stream.*;
 import akka.stream.javadsl.*;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -14,6 +16,8 @@ import java.util.concurrent.TimeUnit;
 
 //https://github.com/akka/akka/blob/v2.5.23/akka-stream-tests/src/test/java/akka/stream/javadsl/GraphDslTest.java
 public class Graphs {
+    private static final Logger logger = LogManager.getLogger(Graphs.class);
+
 
     /*
                                      ------------f2---->
@@ -26,7 +30,6 @@ public class Graphs {
     */
     public static void simpleGraph1Sink(){
         ActorSystem actorSystem = ActorSystem.create("GianbbSystem");
-        Materializer materializer = ActorMaterializer.create(actorSystem);
 
         Source<Integer,NotUsed> source = Source.range(0,10);
         Sink<List<String>, CompletionStage<List<String>>> sink = Sink.head();
@@ -65,17 +68,26 @@ public class Graphs {
         );
 
         try{
-            List<String> list = graph.run(materializer).toCompletableFuture().get();
-            System.out.println("list: "+list);
+            List<String> list = graph.run(actorSystem).toCompletableFuture().get();
+            logger.info("result list: "+list);
         }catch (Exception e){
             e.printStackTrace();
         }
 
+        actorSystem.terminate();
     }
 
+    /*
+                                     ----------sharedDoubler------>(topHeadSink)
+                                    |
+                                    |
+    (in) ------->(broadcast)----->
+                                    |
+                                    |
+                                    -------------sharedDoubler---->(bottomHeadSink)
+    */
     public static void simpleGraph2Sink(){
         final ActorSystem actorSystem = ActorSystem.create("GiangbbSystem");
-        final Materializer materializer = ActorMaterializer.create(actorSystem);
 
         Sink<Integer, CompletionStage<Integer>> topHeadSink = Sink.head();
         Sink<Integer, CompletionStage<Integer>> bottomHeadSink = Sink.head();
@@ -101,7 +113,7 @@ public class Graphs {
                                 }));
 
 
-        Pair<CompletionStage<Integer>, CompletionStage<Integer>> pair = graph.run(materializer);
+        Pair<CompletionStage<Integer>, CompletionStage<Integer>> pair = graph.run(actorSystem);
 
         try{
             int first = pair.first().toCompletableFuture().get(3, TimeUnit.SECONDS);
@@ -112,23 +124,33 @@ public class Graphs {
         }catch (Exception e){
             e.printStackTrace();
         }
+
+        actorSystem.terminate();
     }
 
+    /*
+                                              |---------------->(sink 1)
+                                              |
+                                              |---------------->(sink 2)
+    (in) ------->(broadcast of n outputs)----->..........................
+                                              |
+                                              |---------------->(sink n-1)
+                                              |---------------->(sink n)
+    */
     public static void graphReadMaterializeValueOfManySinks(){
         //In some cases we may have a list of graph elements, for example if they are dynamically created.
         // If these graphs have similar signatures, we can construct a graph collecting all their materialized values as a collection
 
         ActorSystem actorSystem = ActorSystem.create("GianbbSystem");
-        Materializer materializer = ActorMaterializer.create(actorSystem);
 
         // create the source
-        Source<String,NotUsed> in = Source.from(Arrays.asList("ax", "bx", "cv", "cx"));
+        Source<String,NotUsed> in = Source.from(Arrays.asList("ax", "bx", "aa", "cv", "bc", "cx"));
 
         // generate the sinks from code
         List<String> prefixes = Arrays.asList("a", "b", "c");
         List<Sink<String,CompletionStage<String>>> listSink = new ArrayList<>();
         for (String prefix: prefixes){
-            Sink<String, CompletionStage<String>> sink = Flow.of(String.class).filter(strt -> strt.startsWith(prefix)).toMat(Sink.head(),Keep.right());
+            Sink<String, CompletionStage<String>> sink = Flow.of(String.class).filter(strt -> strt.startsWith(prefix)).toMat(Sink.last(),Keep.right());
             listSink.add(sink);
         }
 
@@ -149,7 +171,7 @@ public class Graphs {
                 )
         );
 
-        List<CompletionStage<String>> completionStageList = graph.run(materializer);
+        List<CompletionStage<String>> completionStageList = graph.run(actorSystem);
         for (CompletionStage<String> completionStage:completionStageList){
             try{
                 String materialRes = completionStage.toCompletableFuture().get(3, TimeUnit.SECONDS);
@@ -159,7 +181,7 @@ public class Graphs {
             }
         }
 
-
+        actorSystem.terminate();
     }
 
 
