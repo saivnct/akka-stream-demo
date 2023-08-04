@@ -116,7 +116,6 @@ public class Hub {
         //an example that builds a Flow representing a publish-subscribe channel.
         // The input of the Flow is published to all subscribers while the output streams all the elements published
         ActorSystem actorSystem = ActorSystem.create("GiangbbSystem");
-        Materializer materializer = ActorMaterializer.create(actorSystem);
 
 
         //First, we connect a MergeHub and a BroadcastHub together to form a publish-subscribe channel.
@@ -124,7 +123,7 @@ public class Hub {
         // we get back a pair of Source and Sink that together define the publish and subscribe sides of our channel
         Pair<Sink<String,NotUsed>,Source<String,NotUsed>> sinkAndSource =
                 MergeHub.of(String.class,16)
-                        .toMat(BroadcastHub.of(String.class,256),Keep.both()).run(materializer);
+                        .toMat(BroadcastHub.of(String.class,256),Keep.both()).run(actorSystem);
 
         Sink<String,NotUsed> sink = sinkAndSource.first();
         Source<String,NotUsed> source = sinkAndSource.second();
@@ -132,8 +131,8 @@ public class Hub {
         // Ensure that the Broadcast output is dropped if there are no listening parties.
         // If this dropping Sink is not attached, then the broadcast hub will not drop any
         // elements itself when there are no subscribers, backpressuring the producer instead.
-        source.runWith(Sink.ignore(),materializer);
-        source.runWith(Sink.foreach(s -> System.out.println("origin sink:"+s)),materializer);
+        source.runWith(Sink.ignore(),actorSystem);
+
 
         //We now wrap the Sink and Source in a Flow using Flow.fromSinkAndSource.
         // This bundles up the two sides of the channel into one and forces users of it to always define a publisher and subscriber side
@@ -152,7 +151,7 @@ public class Hub {
         UniqueKillSwitch killSwitch = Source.repeat("Hello World 0!").delay(Duration.ofSeconds(5), DelayOverflowStrategy.backpressure())
                 .throttle(1,Duration.ofSeconds(1))
                 .viaMat(busFlow,Keep.right())
-                .to(Sink.foreach(s -> System.out.println("Sink0:"+s))).run(materializer);
+                .to(Sink.foreach(s -> System.out.println("Sink0:"+s))).run(actorSystem);
 
 
         //region Example 1: add new sources sinks
@@ -173,9 +172,9 @@ public class Hub {
 //                if (cmd.equals("add")){
 //                    final int a = i+1;
 //                    i++;
-//                    UniqueKillSwitch killSwitch2 = Source.repeat("Hello World "+a+"!").delay(Duration.ofSeconds(5), DelayOverflowStrategy.backpressure())
-//                            .viaMat(busFlow,Keep.right())
-//                            .to(Sink.foreach(s -> System.out.println("Sink"+a+":"+s))).run(materializer);
+//                    UniqueKillSwitch killSwitch2 = source
+//                            .viaMat(KillSwitches.single(),Keep.right())
+//                            .to(Sink.foreach(s -> System.out.println("Sink"+a+":"+s))).run(actorSystem);
 //                    uniqueKillSwitchList.add(killSwitch2);
 //                }
 //            }catch (Exception e){
@@ -210,7 +209,7 @@ public class Hub {
                             .delay(Duration.ofSeconds(5), DelayOverflowStrategy.backpressure())
                             .throttle(1,Duration.ofSeconds(1))
                             .viaMat(KillSwitches.single(),Keep.right())
-                            .to(sink).run(materializer);
+                            .to(sink).run(actorSystem);
                     uniqueKillSwitchList.add(killSwitch2);
                 }
             }catch (Exception e){

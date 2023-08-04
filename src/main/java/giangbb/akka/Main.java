@@ -71,7 +71,7 @@ public class Main {
 
 //        Hub.mergeHubTest();
 //        Hub.broadCastHubTest();
-//        Hub.simplePublishSubscribeService();
+        Hub.simplePublishSubscribeService();
 //        Hub.statelessPartitionHubTest();
 //        Hub.statefulPartitionHubTest();
 
